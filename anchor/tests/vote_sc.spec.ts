@@ -1,76 +1,96 @@
 import * as anchor from '@coral-xyz/anchor'
 import {Program} from '@coral-xyz/anchor'
-import {Keypair} from '@solana/web3.js'
+import {Keypair, PublicKey} from '@solana/web3.js'
 import {VoteSc} from '../target/types/vote_sc'
 
-describe('vote_sc', () => {
+import { BankrunProvider, startAnchor } from "anchor-bankrun";
+const IDL = require("../target/idl/vote_sc.json")
+
+const votingaddress = new PublicKey("AsjZ3kWAUSQRNt2pZVeJkywhZ6gpLpHZmJjduPmKZDZZ")
+
+describe('Votingg', () => {
   // Configure the client to use the local cluster.
-  const provider = anchor.AnchorProvider.env()
-  anchor.setProvider(provider)
-  const payer = provider.wallet as anchor.Wallet
+  //writing test for our smart-contract lfgg
 
-  const program = anchor.workspace.VoteSc as Program<VoteSc>
+  let context;
+  let provider;
+  anchor.setProvider(anchor.AnchorProvider.env())
+  let votingProgram = anchor.workspace.VoteSc as Program<VoteSc>;
 
-  const vote_scKeypair = Keypair.generate()
+  beforeAll(async()=>{
+    //this name should match with the name in anchor.toml
+    // context = await startAnchor("", [{name: "vote_sc", programId:votingaddress}], []);
 
-  it('Initialize VoteSc', async () => {
-    await program.methods
-      .initialize()
-      .accounts({
-        vote_sc: vote_scKeypair.publicKey,
-        payer: payer.publicKey,
-      })
-      .signers([vote_scKeypair])
-      .rpc()
+    // provider = new BankrunProvider(context);
+  
+    // votingProgram = new Program<VoteSc>(
+    //   IDL,
+    //   provider,
+    // );
 
-    const currentCount = await program.account.vote_sc.fetch(vote_scKeypair.publicKey)
-
-    expect(currentCount.count).toEqual(0)
   })
 
-  it('Increment VoteSc', async () => {
-    await program.methods.increment().accounts({ vote_sc: vote_scKeypair.publicKey }).rpc()
+  it('Initialize Poll', async () => {
+    
 
-    const currentCount = await program.account.vote_sc.fetch(vote_scKeypair.publicKey)
+    //now here we access out created methods
+    //new anchor.BN(1) => this is how we create object
+    await votingProgram.methods.initializepoll(
+      new anchor.BN(1),
+      "what is your favourite Pokemon?",
+      new anchor.BN(0),
+      new anchor.BN(1730566285)
+    ).rpc()
+    //this .rpc() will call this method to execute the given program with these instrctions
 
-    expect(currentCount.count).toEqual(1)
+    //we can see that pollacccount that just created with the poll_id
+    const [pollAddress] = PublicKey.findProgramAddressSync([new anchor.BN(1).toArrayLike(Buffer, 'le', 8)],votingaddress)
+
+    console.log("pollAddress", pollAddress)
+
+    const poll = await votingProgram.account.poll.fetch(pollAddress);
+    console.log("poll", poll)
+    expect(poll.pollId.toNumber()).toEqual(1)
+    expect(poll.pollDesc).toEqual("what is your favourite Pokemon?")
+    expect(poll.startTime.toNumber()).toBeLessThan(poll.endTime.toNumber())
   })
 
-  it('Increment VoteSc Again', async () => {
-    await program.methods.increment().accounts({ vote_sc: vote_scKeypair.publicKey }).rpc()
+  it("initialize candidate", async()=>{
 
-    const currentCount = await program.account.vote_sc.fetch(vote_scKeypair.publicKey)
+    // const [pollAddress] = PublicKey.findProgramAddressSync(
+    //   [new anchor.BN(1).toArrayLike(Buffer, 'le', 8),Buffer.from("Pikachu")],votingaddress
+    // )
+    // const poll = await votingProgram.account.poll.fetch(pollAddress)
+    // if (!poll) {
+    //   throw new Error("Poll account is not initialized!");
+    // }          
+    await votingProgram.methods.initializecandidate(
+      "Pikachu",
+      new anchor.BN(1)
+    ).rpc()
+    await votingProgram.methods.initializecandidate(
+      "Ratata",
+      new anchor.BN(1)
+    ).rpc()
 
-    expect(currentCount.count).toEqual(2)
-  })
+    const [PikachuAddress] = PublicKey.findProgramAddressSync(
+      [new anchor.BN(1).toArrayLike(Buffer, 'le', 8),Buffer.from("Pikachu")],votingaddress
+    )
 
-  it('Decrement VoteSc', async () => {
-    await program.methods.decrement().accounts({ vote_sc: vote_scKeypair.publicKey }).rpc()
+    const pikachu = await votingProgram.account.candidate.fetch(PikachuAddress)
+    console.log("pikachu",pikachu)
 
-    const currentCount = await program.account.vote_sc.fetch(vote_scKeypair.publicKey)
+  }) 
+  it("vote", async()=>{
 
-    expect(currentCount.count).toEqual(1)
-  })
+    await votingProgram.methods.vote("Pikachu", new anchor.BN(1)).rpc()
 
-  it('Set vote_sc value', async () => {
-    await program.methods.set(42).accounts({ vote_sc: vote_scKeypair.publicKey }).rpc()
+    const [PikachuAddress] = PublicKey.findProgramAddressSync(
+      [new anchor.BN(1).toArrayLike(Buffer, 'le', 8),Buffer.from("Pikachu")],votingaddress
+    )
 
-    const currentCount = await program.account.vote_sc.fetch(vote_scKeypair.publicKey)
+    const pikachu = await votingProgram.account.candidate.fetch(PikachuAddress)
+    console.log("Pickahcuuuu",pikachu)
 
-    expect(currentCount.count).toEqual(42)
-  })
-
-  it('Set close the vote_sc account', async () => {
-    await program.methods
-      .close()
-      .accounts({
-        payer: payer.publicKey,
-        vote_sc: vote_scKeypair.publicKey,
-      })
-      .rpc()
-
-    // The account should no longer exist, returning null.
-    const userAccount = await program.account.vote_sc.fetchNullable(vote_scKeypair.publicKey)
-    expect(userAccount).toBeNull()
   })
 })
